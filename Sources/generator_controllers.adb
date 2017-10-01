@@ -2,17 +2,21 @@
 -- Uwe R. Zimmer, Australia 2015
 --
 
+with System;                              use System;
 with Ada.Real_Time;                       use Ada.Real_Time;
+
 with ANU_Base_Board;                      use ANU_Base_Board;
 with ANU_Base_Board.Com_Interface;        use ANU_Base_Board.Com_Interface;
 with ANU_Base_Board.LED_Interface;        use ANU_Base_Board.LED_Interface;
 with Discovery_Board;                     use Discovery_Board;
 with Discovery_Board.Button;              use Discovery_Board.Button;
 with Discovery_Board.LED_Interface;       use Discovery_Board.LED_Interface;
-with STM32F4;                             use STM32F4;
-with System;                              use System;
+
+with STM32F4;                             use type STM32F4.Bit, STM32F4.Bits_32;
 with STM32F4.Interrupts_and_Events;       use STM32F4.Interrupts_and_Events;
 with STM32F4.General_purpose_IOs;         use STM32F4.General_purpose_IOs;
+with STM32F4.Random_number_generator.Ops; use STM32F4.Random_number_generator.Ops;
+with STM32F4.Reset_and_clock_control.Ops; use STM32F4.Reset_and_clock_control.Ops;
 
 package body Generator_Controllers is
 
@@ -29,7 +33,9 @@ package body Generator_Controllers is
       Release_Time :          Time        := System_Start;
 
    begin
-      delay until System_Start + Milliseconds (100);
+      delay until System_Start + Milliseconds (40);
+
+      On ((My_Port, L));
 
       loop
          Toggle (Red); -- board LEDs
@@ -48,7 +54,7 @@ package body Generator_Controllers is
 
    task Follower with
      Storage_Size => 4 * 1024,
-     Priority     => Priority'Last;
+     Priority     => Default_Priority;
 
    task body Follower is
 
@@ -59,7 +65,7 @@ package body Generator_Controllers is
       Release_Time : Time               := System_Start;
 
    begin
-      delay until System_Start + Milliseconds (100);
+      delay until System_Start + Milliseconds (30);
 
       loop
          declare
@@ -68,6 +74,7 @@ package body Generator_Controllers is
             if Follower_Enabled then
 
                -- read in data
+--                 Receivers (My_Port).Read_Data (In_Data);
                while not Is_Mine loop
                   Port_Inspector.Read_Data (My_Port, In_Data, Is_Mine);
                end loop;

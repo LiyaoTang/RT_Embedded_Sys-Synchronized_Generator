@@ -50,6 +50,10 @@ package ANU_Base_Board.Com_Interface is
       pragma Attach_Handler (Port_Inspector.Handling_Input, EXTI9_5_Interrupt);
       pragma Unreferenced (Handling_Input);
 
+      procedure Invoking_Receiver;
+--        pragma Attach_Handler (Port_Inspector.Invoking_Receiver, EXTI9_5_Interrupt);
+      pragma Unreferenced (Invoking_Receiver);
+
       Data : New_Data_T;
       Arrival : New_Arrival_T := (others => False);
       Triggered : Boolean := False;

@@ -85,6 +85,22 @@ package body ANU_Base_Board.Com_Interface is
 
       end Handling_Input;
 
+      procedure Invoking_Receiver is
+      begin
+         for Port_Num in Com_Ports loop
+            declare
+               Wire : constant Port_Pin := Com_Wires (Port_Num, Rx, Da);
+            begin
+               if Happened (Wire.Pin) then
+                  Clear_Interrupt (Wire.Pin);
+
+                  Receivers (Port_Num).Set_Data (Read (Port_Num));
+               end if;
+            end;
+         end loop;
+
+      end Invoking_Receiver;
+
       procedure Initialize_Interrupt is
       begin
          for Port_Num in Com_Ports loop
