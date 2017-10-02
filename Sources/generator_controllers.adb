@@ -4,6 +4,7 @@
 
 with System;                              use System;
 with Ada.Real_Time;                       use Ada.Real_Time;
+with Ada.Synchronous_Task_Control;        use Ada.Synchronous_Task_Control;
 
 with ANU_Base_Board;                      use ANU_Base_Board;
 with ANU_Base_Board.Com_Interface;        use ANU_Base_Board.Com_Interface;
@@ -16,11 +17,23 @@ with STM32F4;                             use type STM32F4.Bit, STM32F4.Bits_32;
 with STM32F4.Interrupts_and_Events;       use STM32F4.Interrupts_and_Events;
 with STM32F4.General_purpose_IOs;         use STM32F4.General_purpose_IOs;
 with STM32F4.Random_number_generator.Ops; use STM32F4.Random_number_generator.Ops;
-with STM32F4.Reset_and_clock_control.Ops; use STM32F4.Reset_and_clock_control.Ops;
 
 package body Generator_Controllers is
 
    System_Start : constant Time := Clock;
+
+   procedure Select_Master (Port_Num : Com_Ports; Is_Mine : out Boolean) is
+   begin
+      delay until Clock + Microseconds (Integer (Random_Data));
+
+      if Current_State (New_Arrival (Port_Num)) then
+         Is_Mine := False;  -- has received signal from others => I'm Not master
+      else
+         Toggle (Port_Num); -- no signal coming in => I'm the master
+         Is_Mine := True;
+      end if;
+   end Select_Master;
+   pragma Unreferenced (Select_Master);
 
    task Controller with
      Storage_Size => 4 * 1024,
@@ -33,9 +46,7 @@ package body Generator_Controllers is
       Release_Time :          Time        := System_Start;
 
    begin
-      delay until System_Start + Milliseconds (40);
-
-      On ((My_Port, L));
+      delay until System_Start + Milliseconds (30);
 
       loop
          Toggle (Red); -- board LEDs
@@ -61,7 +72,6 @@ package body Generator_Controllers is
       Period       : constant Time_Span := Milliseconds (500) + Microseconds (150);
       My_Port      : constant Com_Ports := Com_Ports (2);
       In_Data      : STM32F4.Bit        := 0;
-      Is_Mine      : Boolean            := False;
       Release_Time : Time               := System_Start;
 
    begin
@@ -74,11 +84,8 @@ package body Generator_Controllers is
             if Follower_Enabled then
 
                -- read in data
---                 Receivers (My_Port).Read_Data (In_Data);
-               while not Is_Mine loop
-                  Port_Inspector.Read_Data (My_Port, In_Data, Is_Mine);
-               end loop;
-               Is_Mine := False;
+               Suspend_Until_True (New_Arrival (My_Port));
+               In_Data := Read (My_Port);
 
                -- board LEDs
                Toggle (Green);

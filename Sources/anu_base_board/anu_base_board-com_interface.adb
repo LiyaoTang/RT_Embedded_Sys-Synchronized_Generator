@@ -2,15 +2,17 @@
 -- Uwe R. Zimmer, Australia 2015
 --
 
+with ANU_Base_Board.Config;                       use ANU_Base_Board.Config;
+with ANU_Base_Board;                              use ANU_Base_Board;
+with Discovery_Board;                             use Discovery_Board;
+with Discovery_Board.LED_Interface;               use Discovery_Board.LED_Interface;
+
 with STM32F4.General_purpose_IOs.Ops;             use STM32F4.General_purpose_IOs.Ops;
 with STM32F4.Reset_and_clock_control.Ops;         use STM32F4.Reset_and_clock_control.Ops;
 with STM32F4.System_configuration_controller.Ops; use STM32F4.System_configuration_controller.Ops;
 with STM32F4.Interrupts_and_Events;               use STM32F4.Interrupts_and_Events;
 with STM32F4.Interrupts_and_Events.Ops;           use STM32F4.Interrupts_and_Events.Ops;
-with ANU_Base_Board.Config;                       use ANU_Base_Board.Config;
-with ANU_Base_Board;                              use ANU_Base_Board;
-with Discovery_Board;                             use Discovery_Board;
-with Discovery_Board.LED_Interface;               use Discovery_Board.LED_Interface;
+with STM32F4.Random_number_generator.Ops;         use STM32F4.Random_number_generator.Ops;
 
 package body ANU_Base_Board.Com_Interface is
 
@@ -36,54 +38,7 @@ package body ANU_Base_Board.Com_Interface is
 
      (Input_Read (Com_Wires (Port, Rx, Data)));
 
-   protected body Receiver is
-
-      entry Read_Data (New_Data : out Bit) when New_Arrival is
-      begin
-         New_Data := Data;
-         New_Arrival := False;
-      end Read_Data;
-
-      procedure Set_Data (New_Data : Bit) is
-      begin
-         Data := New_Data;
-         New_Arrival := True;
-      end Set_Data;
-
-   end Receiver;
-
    protected body Port_Inspector is
-
-      entry Read_Data (Port_Num : Com_Ports; New_Data : out Bit; Is_Mine : out Boolean) when Triggered is
-      begin
-         Is_Mine := Arrival (Port_Num);
-
-         if Arrival (Port_Num) then
-            New_Data := Data (Port_Num);
-            Arrival (Port_Num) := False;
-            Triggered := (for some Arr of Arrival => Arr);
-         end if;
-
-      end Read_Data;
-
-      procedure Handling_Input is
-      begin
-
-         for Port_Num in Com_Ports loop
-            declare
-               Wire : constant Port_Pin := Com_Wires (Port_Num, Rx, Da);
-            begin
-               if Happened (Wire.Pin) then
-                  Clear_Interrupt (Wire.Pin);
-
-                  Data (Port_Num) := Read (Port_Num);
-                  Arrival (Port_Num) := True;
-                  Triggered := True;
-               end if;
-            end;
-         end loop;
-
-      end Handling_Input;
 
       procedure Invoking_Receiver is
       begin
@@ -94,7 +49,7 @@ package body ANU_Base_Board.Com_Interface is
                if Happened (Wire.Pin) then
                   Clear_Interrupt (Wire.Pin);
 
-                  Receivers (Port_Num).Set_Data (Read (Port_Num));
+                  Ada.Synchronous_Task_Control.Set_True (New_Arrival (Port_Num));
                end if;
             end;
          end loop;
@@ -139,8 +94,10 @@ begin
       Set                   (Com_Wires (Port, Tx, Data));
    end loop;
 
-   Port_Inspector.Initialize_Interrupt;
+   Enable (STM32F4.Reset_and_clock_control.Ops.Random_number_generator);
+   Random_Enable;
 
+   Port_Inspector.Initialize_Interrupt;
 exception
    when others => Discovery_Board.LED_Interface.On (Blue);
 end ANU_Base_Board.Com_Interface;
