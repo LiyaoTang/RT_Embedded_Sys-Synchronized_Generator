@@ -88,7 +88,7 @@ package body Generator_Controllers is
 
    begin
       delay until Release_Time; -- wait for system start
-      Release_Time := Release_Time + Milliseconds (400) + Nanoseconds (1);
+      Release_Time := Release_Time + Milliseconds (40) + Nanoseconds (1);
       Select_Master (My_Port, Is_Master, Delay_Time => Release_Time);
 
       loop
@@ -102,7 +102,6 @@ package body Generator_Controllers is
             Send_Data_to_Port (My_Data, My_Port);
             My_Data := My_Data + 1;
 
-            On (Blue);
             delay until Clock + Milliseconds (1);
 
             -- check conflict
@@ -114,8 +113,6 @@ package body Generator_Controllers is
             -- delay till next period
             Release_Time := Release_Time + Period;
             delay until Release_Time; -- something wrong here...
-
-            Off (Blue); -- not executed at all
 
          else
 
@@ -152,7 +149,7 @@ package body Generator_Controllers is
 
    begin
       delay until Release_Time;
-      Release_Time := Release_Time + Milliseconds (40) + Nanoseconds (0);
+      Release_Time := Release_Time + Milliseconds (400) + Nanoseconds (0);
       Select_Master (My_Port, Is_Master, Delay_Time => Release_Time);
 
       loop
@@ -193,6 +190,8 @@ package body Generator_Controllers is
 
                end if;
 
+            else
+               delay until Clock - Milliseconds (100); -- try not occupy the whole CPU
             end if;
          end;
       end loop;
