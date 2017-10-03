@@ -21,9 +21,7 @@ package ANU_Base_Board.Com_Interface is
 
    New_Arrival : array (Com_Ports) of Suspension_Object;
 
-   -- need to decrease concurency (1 inspector for all port instead of 1 for each) because:
-   --   Coms_Ports 1 & 2 are triggering the same EXTI interrupt (EXTI9_5_Interrupt)
-   --   => need to check pending register anyway (when scaled)
+   -- Interrupt Handler => open corresponding semaphore for incoming signal
    protected Port_Inspector with Interrupt_Priority => Interrupt_Priority'Last is
 
       procedure Initialize_Interrupt;
