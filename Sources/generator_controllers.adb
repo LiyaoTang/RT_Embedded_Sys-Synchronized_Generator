@@ -25,6 +25,9 @@ package body Generator_Controllers is
 
    procedure Become_Master (Port : Com_Ports; Is_Master : out Boolean) with inline is
    begin
+      Toggle (Port);
+      Set_False (New_Arrival (Port));
+
       Off ((Port, R));
       On ((Port, L));
       Is_Master := True;
@@ -67,7 +70,6 @@ package body Generator_Controllers is
       else
 
          -- no signal coming in => I'm the master (port L LED)
-         Toggle (Port_Num);
          Become_Master (Port_Num, Is_Master);
       end if;
    end Select_Master;
@@ -88,7 +90,6 @@ package body Generator_Controllers is
 
    begin
       delay until Release_Time; -- wait for system start
-      Release_Time := Release_Time + Milliseconds (40) + Nanoseconds (1);
       Select_Master (My_Port, Is_Master, Delay_Time => Release_Time);
 
       loop
@@ -102,17 +103,15 @@ package body Generator_Controllers is
             Send_Data_to_Port (My_Data, My_Port);
             My_Data := My_Data + 1;
 
-            delay until Clock + Milliseconds (1);
+            -- delay till next period
+            Release_Time := Release_Time + Period;
+            delay until Release_Time; -- something wrong here...
 
             -- check conflict
             if Current_State (New_Arrival (My_Port)) then
                -- Re-select Master => Master should not have incoming signal
                Select_Master (My_Port, Is_Master);
             end if;
-
-            -- delay till next period
-            Release_Time := Release_Time + Period;
-            delay until Release_Time; -- something wrong here...
 
          else
 
@@ -149,7 +148,6 @@ package body Generator_Controllers is
 
    begin
       delay until Release_Time;
-      Release_Time := Release_Time + Milliseconds (400) + Nanoseconds (0);
       Select_Master (My_Port, Is_Master, Delay_Time => Release_Time);
 
       loop
@@ -168,6 +166,7 @@ package body Generator_Controllers is
                   Send_Data_to_Port (My_Data, My_Port);
                   My_Data := My_Data + 1;
 
+                  -- delay till next period
                   Release_Time := Release_Time + Period;
                   delay until Release_Time;
 
