@@ -17,30 +17,15 @@ with Discovery_Board.LED_Interface;       use Discovery_Board.LED_Interface;
 with STM32F4;                             use type STM32F4.Bit, STM32F4.Bits_32;
 with STM32F4.Interrupts_and_Events;       use STM32F4.Interrupts_and_Events;
 with STM32F4.General_purpose_IOs;         use STM32F4.General_purpose_IOs;
-with STM32F4.Random_number_generator.Ops; use STM32F4.Random_number_generator.Ops;
 
 package body Generator_Controllers is
 
-   System_Start : constant Time := Clock;
+   System_Start   : constant Time      := Clock;
+   System_Ready   : constant Time      := System_Start + Milliseconds (30);
 
-   procedure Become_Master (Port : Com_Ports; Is_Master : out Boolean) with inline is
-   begin
-      Toggle (Port);
-      Set_False (New_Arrival (Port));
+   Allowed_Delay  : constant Time_Span := Microseconds (10);
 
-      Off ((Port, R));
-      On ((Port, L));
-      Is_Master := True;
-   end Become_Master;
-
-   procedure Become_Slave (Port : Com_Ports; Is_Master : out Boolean) with Inline is
-   begin
-      Off ((Port, L));
-      On ((Port, R));
-      Is_Master := False;
-   end Become_Slave;
-
-   procedure Change_LED_for_Data (My_Data : STM32F4.Bit; LED : Discovery_Board.LEDs) with Inline is
+   procedure Change_LED_for_Data (My_Data : STM32F4.Bit; LED : ANU_Base_Board.LEDs) with Inline is
    begin
       if My_Data = 1 then
          On (LED);
@@ -58,21 +43,118 @@ package body Generator_Controllers is
       end if;
    end Send_Data_to_Port;
 
-   procedure Select_Master (Port_Num : Com_Ports; Is_Master : out Boolean;
-                            Delay_Time : Time := Clock + Nanoseconds (Integer (Random_Data / 2 - 1))) is
+   type In_Time_idx_T is mod 3;
+   type Time_Stamps_T is array (In_Time_idx_T) of Time;
+
+   type Phase_Info_T  is record
+      Period : Time_Span;
+      Peak   : Time;
+   end record;
+
+   Invalid_Phase_Info : constant Phase_Info_T := (Time_Span_First, Time_First);
+
+   protected type Incoming_Signal is
+      procedure Record_Time (Arrive_Time : Time);
+      function Get_Phase_Info return Phase_Info_T;
+   private
+
+      Is_Valid        : Boolean       := False;
+      Recent_Time_Idx : In_Time_idx_T := 0;
+      Time_Stamps     : Time_Stamps_T := (others => System_Start);
+   end Incoming_Signal;
+
+   protected body Incoming_Signal is
+      procedure Record_Time (Arrive_Time : Time) is
+      begin
+         Time_Stamps (Recent_Time_Idx) := Arrive_Time;
+         Recent_Time_Idx := Recent_Time_Idx + 1;
+
+         if abs ((Time_Stamps (Recent_Time_Idx - 1) - Time_Stamps (Recent_Time_Idx - 2)) -
+                 (Time_Stamps (Recent_Time_Idx - 2) - Time_Stamps (Recent_Time_Idx))) < Allowed_Delay
+         then
+            Is_Valid := True;
+         end if;
+      end Record_Time;
+
+      function Get_Phase_Info return Phase_Info_T is
+        (if Is_Valid then (((Time_Stamps (Recent_Time_Idx - 1) - Time_Stamps (Recent_Time_Idx - 2)) +
+                            (Time_Stamps (Recent_Time_Idx - 2) - Time_Stamps (Recent_Time_Idx))) / 2,
+                           Peak => Time_Stamps (Recent_Time_Idx - 1))
+         else Invalid_Phase_Info);
+
+   end Incoming_Signal;
+
+   Incoming_Signal_Register : array (Com_Ports) of Incoming_Signal;
+
+   task type Receiver (My_Port : Com_Ports) with Priority => Default_Priority;
+   task body Receiver is
+      In_Data : STM32F4.Bit := 0;
    begin
-      delay until Delay_Time;
+      delay until System_Ready;
 
-      if Current_State (New_Arrival (Port_Num)) then
+      loop
+         -- Incoming signal
+         Suspend_Until_True (New_Arrival (My_Port));
+         Incoming_Signal_Register (My_Port).Record_Time (Clock); -- register the time
+         In_Data := Read (My_Port); -- read data
 
-         -- has received signal => I'm Not master (port R LED)
-         Become_Slave (Port_Num, Is_Master);
-      else
+         -- Port LEDs (R => Incoming)
+         Change_LED_for_Data (In_Data, (My_Port, R));
+      end loop;
 
-         -- no signal coming in => I'm the master (port L LED)
-         Become_Master (Port_Num, Is_Master);
+   exception
+         when others => On (Blue);
+   end Receiver;
+
+   Receiver_1 : Receiver (1);
+   Receiver_2 : Receiver (2);
+
+   procedure Adjust_Phase (My_Port : Com_Ports; Next_Release_Time : in out Time; My_Period : in out Time_Span; Changing : out Boolean)
+     with inline is
+
+      In_Phase          : constant Phase_Info_T := Incoming_Signal_Register (My_Port).Get_Phase_Info;
+      Cur_Release_Time  : constant Time         := Next_Release_Time - My_Period;
+      Last_Release_Time : constant Time         := Next_Release_Time - 2 * My_Period;
+   begin
+
+      Changing := False;
+
+      if In_Phase /= Invalid_Phase_Info then
+         if abs (In_Phase.Peak - Cur_Release_Time) > Allowed_Delay and then -- phase shif
+           abs (In_Phase.Peak - Last_Release_Time) > Allowed_Delay
+         then
+            if abs (In_Phase.Period - My_Period) < Allowed_Delay then -- same period => new one adjust (first detect first adjust)
+
+               Next_Release_Time := In_Phase.Peak + In_Phase.Period;
+
+               Changing := True;
+
+               if My_Port = 1 then
+                  Toggle ((4, L));
+               else
+                  Toggle ((4, R));
+               end if;
+
+            elsif My_Period < In_Phase.Period then -- different period => short one adjust
+
+               Next_Release_Time := In_Phase.Peak + In_Phase.Period;
+
+               My_Period := In_Phase.Period;
+
+               Changing := True;
+
+               if My_Port = 1 then
+                  Toggle ((3, L));
+                  Toggle ((4, L));
+               else
+                  Toggle ((3, R));
+                  Toggle ((4, R));
+               end if;
+            end if;
+         end if;
       end if;
-   end Select_Master;
+
+   end Adjust_Phase;
 
    task Controller with
      Storage_Size => 4 * 1024,
@@ -80,57 +162,40 @@ package body Generator_Controllers is
 
    task body Controller is
 
-      Period       : constant Time_Span            := Milliseconds (500);
-      My_Port      : constant Com_Ports            := Com_Ports (1);
-      My_LED       : constant Discovery_Board.LEDs := Red;
-      My_Data      :          STM32F4.Bit          := 0;
-      Release_Time :          Time                 := System_Start + Milliseconds (30);
-      Is_Master    :          Boolean              := False;
-      Changed      :          Boolean              := True;
+      My_Port      : constant Com_Ports   := Com_Ports (1);
+
+      My_Period    :          Time_Span   := Milliseconds (500);
+      My_Data      :          STM32F4.Bit := 0;
+      Release_Time :          Time        := System_Ready;
+
+      Changing     :          Boolean     := False;
 
    begin
-      delay until Release_Time; -- wait for system start
-      Select_Master (My_Port, Is_Master, Delay_Time => Release_Time);
+      delay until System_Ready;
+      Toggle (Red);
 
       loop
-         if Is_Master then
+         Release_Time := Release_Time + My_Period;
 
-            -- board LEDs
-            Change_LED_for_Data (My_Data, My_LED);
-            On (Orange);
-
-            -- output data
-            Send_Data_to_Port (My_Data, My_Port);
-            My_Data := My_Data + 1;
-
-            -- delay till next period
-            Release_Time := Release_Time + Period;
-            delay until Release_Time; -- something wrong here...
-
-            -- check conflict
-            if Current_State (New_Arrival (My_Port)) then
-               -- Re-select Master => Master should not have incoming signal
-               Select_Master (My_Port, Is_Master);
-            end if;
-
-         else
-
-            -- read in data
-            Suspend_Until_True (New_Arrival (My_Port));
-            My_Data := Read (My_Port);
-
-            -- board LEDs
-            Change_LED_for_Data (My_Data, My_LED);
-            Off (Orange);
-
-            if not Changed then
-               Become_Master (My_Port, Is_Master);
-               Changed := True;
-            end if;
+         -- Adjust Release_Time
+         if not Changing then
+            Adjust_Phase (My_Port, Release_Time, My_Period, Changing);
          end if;
 
+         -- output data & LED (L => Outgoing)
+         Send_Data_to_Port (My_Data, My_Port);
+         Change_LED_for_Data (My_Data, (My_Port, L));
+         My_Data := My_Data + 1;
+
+         Toggle (Orange);
+         Toggle (Red);
+
+         -- delay till next period
+         delay until Release_Time;
       end loop;
 
+   exception
+         when others => On (Blue);
    end Controller;
 
    task Follower with
@@ -139,55 +204,39 @@ package body Generator_Controllers is
 
    task body Follower is
 
-      Period       : constant Time_Span            := Milliseconds (500) + Microseconds (150);
-      My_Port      : constant Com_Ports            := Com_Ports (2);
-      My_LED       : constant Discovery_Board.LEDs := Green;
-      My_Data      :          STM32F4.Bit          := 0;
-      Release_Time :          Time                 := System_Start + Milliseconds (30);
-      Is_Master    :          Boolean              := False;
+      My_Port      : constant Com_Ports   := Com_Ports (2);
+
+      My_Period    :          Time_Span   := Milliseconds (500) + Milliseconds (50);
+      My_Data      :          STM32F4.Bit := 0;
+      Release_Time :          Time        := System_Ready;
+
+      Changing     :          Boolean     := False;
 
    begin
-      delay until Release_Time;
-      Select_Master (My_Port, Is_Master, Delay_Time => Release_Time);
+      delay until System_Ready + Milliseconds (100);
 
       loop
          declare
             Follower_Enabled : constant Boolean := Button.Current_Blue_Button_State = Off;
          begin
             if Follower_Enabled then
+               Release_Time := Release_Time + My_Period;
 
-               if Is_Master then
-
-                  -- board LEDs
-                  Change_LED_for_Data (My_Data, My_LED);
-                  On (Orange);
-
-                  -- output data
-                  Send_Data_to_Port (My_Data, My_Port);
-                  My_Data := My_Data + 1;
-
-                  -- delay till next period
-                  Release_Time := Release_Time + Period;
-                  delay until Release_Time;
-
-                  -- check conflict
-                  if Current_State (New_Arrival (My_Port)) then
-
-                     -- Re-select Master => Master should not have incoming signal
-                     Select_Master (My_Port, Is_Master);
-                  end if;
-
-               else
-
-                  -- read in data
-                  Suspend_Until_True (New_Arrival (My_Port));
-                  My_Data := Read (My_Port);
-
-                  -- board LEDs
-                  Change_LED_for_Data (My_Data, My_LED);
-                  Off (Orange);
-
+               -- Adjust Release_Time
+               if not Changing then
+                  Adjust_Phase (My_Port, Release_Time, My_Period, Changing);
                end if;
+
+               -- output data & LED (L => Outgoing)
+               Send_Data_to_Port (My_Data, My_Port);
+               Change_LED_for_Data (My_Data, (My_Port, L));
+               My_Data := My_Data + 1;
+
+               Toggle (Orange);
+               Toggle (Red);
+
+               -- delay till next period
+               delay until Release_Time;
 
             else
                delay until Clock - Milliseconds (100); -- try not occupy the whole CPU
@@ -195,6 +244,8 @@ package body Generator_Controllers is
          end;
       end loop;
 
+   exception
+         when others => On (Blue);
    end Follower;
 
 end Generator_Controllers;
