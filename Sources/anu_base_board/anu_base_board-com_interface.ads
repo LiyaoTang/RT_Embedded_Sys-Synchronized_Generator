@@ -19,7 +19,7 @@ package ANU_Base_Board.Com_Interface is
 
    function Read (Port : Com_Ports) return Bit;
 
-   New_Arrival : array (Com_Ports) of Suspension_Object;
+   New_Arrival  : array (Com_Ports) of Suspension_Object;
 
    -- Interrupt Handler => open corresponding semaphore for incoming signal
    protected Port_Inspector with Interrupt_Priority => Interrupt_Priority'Last is

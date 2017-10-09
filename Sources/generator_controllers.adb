@@ -44,42 +44,28 @@ package body Generator_Controllers is
    end Send_Data_to_Port;
 
    type In_Time_idx_T is mod 3;
-   type Time_Stamps_T is array (In_Time_idx_T) of Time;
-
-   type Phase_Info_T  is record
-      Period : Time_Span;
-      Peak   : Time;
+   type In_Time_Arr   is array (In_Time_idx_T) of Time;
+   type Signal_Record is record
+      Time_Stamps : In_Time_Arr   := (others => System_Ready);
+      Cur_idx     : In_Time_idx_T := 0;
    end record;
 
-   Invalid_Phase_Info : constant Phase_Info_T := (Time_Span_First, Time_First);
-
    protected type Incoming_Signal is
-      procedure Record_Time (Arrive_Time : Time);
-      function Get_Phase_Info return Phase_Info_T;
+      procedure Record_Time (New_Arrive_Time : Time);
+      function Get_Incoming_Signal_Info return Signal_Record;
    private
-
-      Is_Valid        : Boolean       := False;
-      Recent_Time_Idx : In_Time_idx_T := 0;
-      Time_Stamps     : Time_Stamps_T := (others => System_Start);
+      Signal : Signal_Record;
    end Incoming_Signal;
 
    protected body Incoming_Signal is
-      procedure Record_Time (Arrive_Time : Time) is
+      procedure Record_Time (New_Arrive_Time : Time) is
       begin
-         Time_Stamps (Recent_Time_Idx) := Arrive_Time;
-         Recent_Time_Idx := Recent_Time_Idx + 1;
-
-         -- only valid if incomging signal stable
-         Is_Valid := abs ((Time_Stamps (Recent_Time_Idx - 1) - Time_Stamps (Recent_Time_Idx - 2)) -
-                          (Time_Stamps (Recent_Time_Idx - 2) - Time_Stamps (Recent_Time_Idx))) < Allowed_Delay;
+         Signal.Time_Stamps (Signal.Cur_idx) := New_Arrive_Time;
+         Signal.Cur_idx := Signal.Cur_idx + 1;
       end Record_Time;
 
-      function Get_Phase_Info return Phase_Info_T is
-        (if Is_Valid then (((Time_Stamps (Recent_Time_Idx - 1) - Time_Stamps (Recent_Time_Idx - 2)) +
-                            (Time_Stamps (Recent_Time_Idx - 2) - Time_Stamps (Recent_Time_Idx))) / 2,
-                           Peak => Time_Stamps (Recent_Time_Idx - 1))
-         else Invalid_Phase_Info);
-
+      function Get_Incoming_Signal_Info return Signal_Record is
+        (Signal);
    end Incoming_Signal;
 
    Incoming_Signal_Register : array (Com_Ports) of Incoming_Signal;
@@ -112,82 +98,43 @@ package body Generator_Controllers is
    procedure Adjust_Phase (My_Port : Com_Ports; Next_Release_Time : in out Time; My_Period : in out Time_Span; Changing : out Boolean)
      with inline is
 
-      In_Phase          : constant Phase_Info_T := Incoming_Signal_Register (My_Port).Get_Phase_Info;
-      Cur_Release_Time  : constant Time         := Next_Release_Time - My_Period;
-      Last_Release_Time : constant Time         := Next_Release_Time - 2 * My_Period;
+      In_Signal         : constant Signal_Record  := Incoming_Signal_Register (My_Port).Get_Incoming_Signal_Info;
+      Time_Stamps       : constant In_Time_Arr    := In_Signal.Time_Stamps; -- if use 'renames' => huge difference! (How renames work?)
+      Time_idx          : constant In_Time_idx_T  := In_Signal.Cur_idx;
+
+      In_Peak           : constant Time           := Time_Stamps (Time_idx - 1);
+      In_Period         : constant Time_Span      := ((Time_Stamps (Time_idx - 1) - Time_Stamps (Time_idx - 2)) +
+                                                     (Time_Stamps (Time_idx - 2) - Time_Stamps (Time_idx))) / 2;
+
+      Cur_Release_Time  : constant Time           := Next_Release_Time - My_Period;
+      Last_Release_Time : constant Time           := Next_Release_Time - 2 * My_Period;
    begin
 
       Changing := False;
 
-      if In_Phase /= Invalid_Phase_Info then
-         if abs (In_Phase.Peak - Cur_Release_Time) > Allowed_Delay and then -- detect phase shif
-           abs (In_Phase.Peak - Last_Release_Time) > Allowed_Delay
-         then
-            if abs (In_Phase.Period - My_Period) < Allowed_Delay then -- same period => new one adjust (first detect first adjust)
+      -- check only if incoming signal stable & phase shift detected
+      if abs ((Time_Stamps (Time_idx - 1) - Time_Stamps (Time_idx - 2)) -
+              (Time_Stamps (Time_idx - 2) - Time_Stamps (Time_idx))) < Allowed_Delay and then -- stable incoming signal
+        abs (In_Peak - Cur_Release_Time) > Allowed_Delay and then -- detected phase shift
+        abs (In_Peak - Last_Release_Time) > Allowed_Delay
+      then
 
-               Next_Release_Time := In_Phase.Peak + In_Phase.Period;
+         if abs (In_Period - My_Period) < Allowed_Delay then -- same period => new one adjust (first detect first adjust)
 
-               Changing := True;
+            Next_Release_Time := In_Peak + In_Period;
 
-            elsif My_Period < In_Phase.Period then -- different period => short one adjust
+            Changing := True;
 
-               Next_Release_Time := In_Phase.Peak + In_Phase.Period;
-               My_Period := In_Phase.Period;
+         elsif My_Period < In_Period then -- different period => short one adjust
 
-               Changing := True;
-            end if;
+            Next_Release_Time := In_Peak + In_Period;
+            My_Period := In_Period;
+
+            Changing := True;
          end if;
       end if;
 
    end Adjust_Phase;
-
-   procedure Adjust_Phase_Selftest (My_Port : Com_Ports; Next_Release_Time : in out Time; My_Period : in out Time_Span; Changing : out Boolean)
-     with inline is
-
-      In_Phase          : constant Phase_Info_T := Incoming_Signal_Register (My_Port).Get_Phase_Info;
-      Cur_Release_Time  : constant Time         := Next_Release_Time - My_Period;
-      Last_Release_Time : constant Time         := Next_Release_Time - 2 * My_Period;
-   begin
-
-      Changing := False;
-
-      if In_Phase /= Invalid_Phase_Info then
-         if abs (In_Phase.Peak - Cur_Release_Time) > Allowed_Delay and then -- phase shif
-           abs (In_Phase.Peak - Last_Release_Time) > Allowed_Delay
-         then
-            if abs (In_Phase.Period - My_Period) < Allowed_Delay then -- same period => new one adjust (first detect first adjust)
-
-               Next_Release_Time := In_Phase.Peak + In_Phase.Period;
-
-               Changing := True;
-
-               if My_Port = 1 then
-                  Toggle ((4, L));
-               else
-                  Toggle ((4, R));
-               end if;
-
-            elsif My_Period < In_Phase.Period then -- different period => short one adjust
-
-               Next_Release_Time := In_Phase.Peak + In_Phase.Period;
-
-               My_Period := In_Phase.Period;
-
-               Changing := True;
-
-               if My_Port = 1 then
-                  Toggle ((3, L));
-                  Toggle ((4, L));
-               else
-                  Toggle ((3, R));
-                  Toggle ((4, R));
-               end if;
-            end if;
-         end if;
-      end if;
-
-   end Adjust_Phase_Selftest;
-   pragma Unreferenced (Adjust_Phase_Selftest);
 
    task Controller with
      Storage_Size => 4 * 1024,
