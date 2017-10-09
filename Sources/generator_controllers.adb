@@ -69,11 +69,9 @@ package body Generator_Controllers is
          Time_Stamps (Recent_Time_Idx) := Arrive_Time;
          Recent_Time_Idx := Recent_Time_Idx + 1;
 
-         if abs ((Time_Stamps (Recent_Time_Idx - 1) - Time_Stamps (Recent_Time_Idx - 2)) -
-                 (Time_Stamps (Recent_Time_Idx - 2) - Time_Stamps (Recent_Time_Idx))) < Allowed_Delay
-         then
-            Is_Valid := True;
-         end if;
+         -- only valid if incomging signal stable
+         Is_Valid := abs ((Time_Stamps (Recent_Time_Idx - 1) - Time_Stamps (Recent_Time_Idx - 2)) -
+                          (Time_Stamps (Recent_Time_Idx - 2) - Time_Stamps (Recent_Time_Idx))) < Allowed_Delay;
       end Record_Time;
 
       function Get_Phase_Info return Phase_Info_T is
