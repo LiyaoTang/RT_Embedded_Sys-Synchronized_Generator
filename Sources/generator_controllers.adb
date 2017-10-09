@@ -23,7 +23,7 @@ package body Generator_Controllers is
    System_Start   : constant Time      := Clock;
    System_Ready   : constant Time      := System_Start + Milliseconds (30);
 
-   Allowed_Delay  : constant Time_Span := Microseconds (10);
+   Allowed_Delay  : constant Time_Span := Nanoseconds (100);
 
    procedure Change_LED_for_Data (My_Data : STM32F4.Bit; LED : ANU_Base_Board.LEDs) with Inline is
    begin
@@ -108,8 +108,42 @@ package body Generator_Controllers is
 
    Receiver_1 : Receiver (1);
    Receiver_2 : Receiver (2);
+   Receiver_3 : Receiver (3);
+   Receiver_4 : Receiver (4);
 
    procedure Adjust_Phase (My_Port : Com_Ports; Next_Release_Time : in out Time; My_Period : in out Time_Span; Changing : out Boolean)
+     with inline is
+
+      In_Phase          : constant Phase_Info_T := Incoming_Signal_Register (My_Port).Get_Phase_Info;
+      Cur_Release_Time  : constant Time         := Next_Release_Time - My_Period;
+      Last_Release_Time : constant Time         := Next_Release_Time - 2 * My_Period;
+   begin
+
+      Changing := False;
+
+      if In_Phase /= Invalid_Phase_Info then
+         if abs (In_Phase.Peak - Cur_Release_Time) > Allowed_Delay and then -- detect phase shif
+           abs (In_Phase.Peak - Last_Release_Time) > Allowed_Delay
+         then
+            if abs (In_Phase.Period - My_Period) < Allowed_Delay then -- same period => new one adjust (first detect first adjust)
+
+               Next_Release_Time := In_Phase.Peak + In_Phase.Period;
+
+               Changing := True;
+
+            elsif My_Period < In_Phase.Period then -- different period => short one adjust
+
+               Next_Release_Time := In_Phase.Peak + In_Phase.Period;
+               My_Period := In_Phase.Period;
+
+               Changing := True;
+            end if;
+         end if;
+      end if;
+
+   end Adjust_Phase;
+
+   procedure Adjust_Phase_Selftest (My_Port : Com_Ports; Next_Release_Time : in out Time; My_Period : in out Time_Span; Changing : out Boolean)
      with inline is
 
       In_Phase          : constant Phase_Info_T := Incoming_Signal_Register (My_Port).Get_Phase_Info;
@@ -154,7 +188,8 @@ package body Generator_Controllers is
          end if;
       end if;
 
-   end Adjust_Phase;
+   end Adjust_Phase_Selftest;
+   pragma Unreferenced (Adjust_Phase_Selftest);
 
    task Controller with
      Storage_Size => 4 * 1024,
@@ -175,13 +210,6 @@ package body Generator_Controllers is
       Toggle (Red);
 
       loop
-         Release_Time := Release_Time + My_Period;
-
-         -- Adjust Release_Time
-         if not Changing then
-            Adjust_Phase (My_Port, Release_Time, My_Period, Changing);
-         end if;
-
          -- output data & LED (L => Outgoing)
          Send_Data_to_Port (My_Data, My_Port);
          Change_LED_for_Data (My_Data, (My_Port, L));
@@ -189,6 +217,12 @@ package body Generator_Controllers is
 
          Toggle (Orange);
          Toggle (Red);
+
+         -- Adjust Release_Time
+         Release_Time := Release_Time + My_Period;
+         if not Changing then
+            Adjust_Phase (My_Port, Release_Time, My_Period, Changing);
+         end if;
 
          -- delay till next period
          delay until Release_Time;
@@ -220,12 +254,6 @@ package body Generator_Controllers is
             Follower_Enabled : constant Boolean := Button.Current_Blue_Button_State = Off;
          begin
             if Follower_Enabled then
-               Release_Time := Release_Time + My_Period;
-
-               -- Adjust Release_Time
-               if not Changing then
-                  Adjust_Phase (My_Port, Release_Time, My_Period, Changing);
-               end if;
 
                -- output data & LED (L => Outgoing)
                Send_Data_to_Port (My_Data, My_Port);
@@ -234,6 +262,12 @@ package body Generator_Controllers is
 
                Toggle (Orange);
                Toggle (Red);
+
+               -- Adjust Release_Time
+               Release_Time := Release_Time + My_Period;
+               if not Changing then
+                  Adjust_Phase (My_Port, Release_Time, My_Period, Changing);
+               end if;
 
                -- delay till next period
                delay until Release_Time;

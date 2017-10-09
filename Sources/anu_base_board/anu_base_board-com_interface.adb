@@ -48,7 +48,6 @@ package body ANU_Base_Board.Com_Interface is
             begin
                if Happened (Wire.Pin) then
                   Clear_Interrupt (Wire.Pin);
-
                   Ada.Synchronous_Task_Control.Set_True (New_Arrival (Port_Num));
                end if;
             end;
