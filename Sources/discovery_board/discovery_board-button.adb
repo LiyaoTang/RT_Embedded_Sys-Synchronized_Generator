@@ -13,8 +13,6 @@ with STM32F4.Interrupts_and_Events.Ops;           use STM32F4.Interrupts_and_Eve
 with STM32F4.Reset_and_clock_control.Ops;         use STM32F4.Reset_and_clock_control.Ops;
 with STM32F4.System_configuration_controller.Ops; use STM32F4.System_configuration_controller.Ops;
 with System;                                      use System;
-with ANU_Base_Board.LED_Interface;
-with ANU_Base_Board; use ANU_Base_Board;
 
 package body Discovery_Board.Button is
 

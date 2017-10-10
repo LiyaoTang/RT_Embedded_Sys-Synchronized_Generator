@@ -23,25 +23,7 @@ package body Generator_Controllers is
    System_Start   : constant Time      := Clock;
    System_Ready   : constant Time      := System_Start + Milliseconds (30);
 
-   Allowed_Delay  : constant Time_Span := Nanoseconds (100);
-
-   procedure Change_LED_for_Data (My_Data : STM32F4.Bit; LED : ANU_Base_Board.LEDs) with Inline is
-   begin
-      if My_Data = 1 then
-         On (LED);
-      else
-         Off (LED);
-      end if;
-   end Change_LED_for_Data;
-
-   procedure Send_Data_to_Port (My_Data : STM32F4.Bit; Port : Com_Ports) with Inline is
-   begin
-      if My_Data = 1 then
-         Set (Port);
-      else
-         Reset (Port);
-      end if;
-   end Send_Data_to_Port;
+   Allowed_Delay  : constant Time_Span := Microseconds (1);
 
    type In_Time_idx_T is mod 3;
    type In_Time_Arr   is array (In_Time_idx_T) of Time;
@@ -72,7 +54,6 @@ package body Generator_Controllers is
 
    task type Receiver (My_Port : Com_Ports) with Priority => Default_Priority;
    task body Receiver is
-      In_Data : STM32F4.Bit := 0;
    begin
       delay until System_Ready;
 
@@ -80,10 +61,9 @@ package body Generator_Controllers is
          -- Incoming signal
          Suspend_Until_True (New_Arrival (My_Port));
          Incoming_Signal_Register (My_Port).Record_Time (Clock); -- register the time
-         In_Data := Read (My_Port); -- read data
 
          -- Port LEDs (R => Incoming)
-         Change_LED_for_Data (In_Data, (My_Port, R));
+         Toggle ((My_Port, R));
       end loop;
 
    exception
@@ -103,8 +83,9 @@ package body Generator_Controllers is
       Time_idx          : constant In_Time_idx_T  := In_Signal.Cur_idx;
 
       In_Peak           : constant Time           := Time_Stamps (Time_idx - 1);
-      In_Period         : constant Time_Span      := ((Time_Stamps (Time_idx - 1) - Time_Stamps (Time_idx - 2)) +
-                                                     (Time_Stamps (Time_idx - 2) - Time_Stamps (Time_idx))) / 2;
+      In_Recent_Period  : constant Time_Span      := Time_Stamps (Time_idx - 1) - Time_Stamps (Time_idx - 2);
+      In_Remote_Period  : constant Time_Span      := Time_Stamps (Time_idx - 2) - Time_Stamps (Time_idx);
+      In_Period         : constant Time_Span      := (In_Recent_Period + In_Remote_Period) / 2;
 
       Cur_Release_Time  : constant Time           := Next_Release_Time - My_Period;
       Last_Release_Time : constant Time           := Next_Release_Time - 2 * My_Period;
@@ -113,24 +94,23 @@ package body Generator_Controllers is
       Changing := False;
 
       -- check only if incoming signal stable & phase shift detected
-      if abs ((Time_Stamps (Time_idx - 1) - Time_Stamps (Time_idx - 2)) -
-              (Time_Stamps (Time_idx - 2) - Time_Stamps (Time_idx))) < Allowed_Delay and then -- stable incoming signal
+      if abs (In_Recent_Period - In_Remote_Period) < Allowed_Delay and then -- stable incoming signal
         abs (In_Peak - Cur_Release_Time) > Allowed_Delay and then -- detected phase shift
         abs (In_Peak - Last_Release_Time) > Allowed_Delay
       then
-
          if abs (In_Period - My_Period) < Allowed_Delay then -- same period => new one adjust (first detect first adjust)
 
             Next_Release_Time := In_Peak + In_Period;
 
             Changing := True;
 
-         elsif My_Period < In_Period then -- different period => short one adjust
+         elsif My_Period > In_Period then -- different period => long one adjust
 
             Next_Release_Time := In_Peak + In_Period;
             My_Period := In_Period;
 
             Changing := True;
+
          end if;
       end if;
 
@@ -144,21 +124,17 @@ package body Generator_Controllers is
 
       My_Port      : constant Com_Ports   := Com_Ports (1);
 
-      My_Period    :          Time_Span   := Milliseconds (500);
-      My_Data      :          STM32F4.Bit := 0;
+      My_Period    :          Time_Span   := Milliseconds (50);
       Release_Time :          Time        := System_Ready;
 
       Changing     :          Boolean     := False;
 
    begin
       delay until System_Ready;
-      Toggle (Red);
 
       loop
          -- output data & LED (L => Outgoing)
-         Send_Data_to_Port (My_Data, My_Port);
-         Change_LED_for_Data (My_Data, (My_Port, L));
-         My_Data := My_Data + 1;
+         Toggle (My_Port);
 
          Toggle (Orange);
          Toggle (Red);
@@ -185,14 +161,13 @@ package body Generator_Controllers is
 
       My_Port      : constant Com_Ports   := Com_Ports (2);
 
-      My_Period    :          Time_Span   := Milliseconds (500) + Milliseconds (50);
-      My_Data      :          STM32F4.Bit := 0;
+      My_Period    :          Time_Span   := Milliseconds (50) + Microseconds (100);
       Release_Time :          Time        := System_Ready;
 
       Changing     :          Boolean     := False;
 
    begin
-      delay until System_Ready + Milliseconds (100);
+      delay until System_Ready;
 
       loop
          declare
@@ -201,9 +176,7 @@ package body Generator_Controllers is
             if Follower_Enabled then
 
                -- output data & LED (L => Outgoing)
-               Send_Data_to_Port (My_Data, My_Port);
-               Change_LED_for_Data (My_Data, (My_Port, L));
-               My_Data := My_Data + 1;
+               Toggle (My_Port);
 
                Toggle (Orange);
                Toggle (Red);
@@ -218,7 +191,7 @@ package body Generator_Controllers is
                delay until Release_Time;
 
             else
-               delay until Clock - Milliseconds (100); -- try not occupy the whole CPU
+               delay until Clock - Milliseconds (1); -- try not occupy the whole CPU
             end if;
          end;
       end loop;
