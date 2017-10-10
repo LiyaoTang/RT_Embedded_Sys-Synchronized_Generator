@@ -23,7 +23,7 @@ package body Generator_Controllers is
    System_Start   : constant Time      := Clock;
    System_Ready   : constant Time      := System_Start + Milliseconds (30);
 
-   Allowed_Delay  : constant Time_Span := Microseconds (1);
+   Allowed_Delay  : constant Time_Span := Nanoseconds (10);
 
    type In_Time_idx_T is mod 3;
    type In_Time_Arr   is array (In_Time_idx_T) of Time;
@@ -94,17 +94,19 @@ package body Generator_Controllers is
       Changing := False;
 
       -- check only if incoming signal stable & phase shift detected
-      if abs (In_Recent_Period - In_Remote_Period) < Allowed_Delay and then -- stable incoming signal
+      if (for all t of Time_Stamps => t /= System_Ready) and then -- enough incoming signal
+      abs (In_Recent_Period - In_Remote_Period) < Allowed_Delay and then -- stable incoming signal
         abs (In_Peak - Cur_Release_Time) > Allowed_Delay and then -- detected phase shift
         abs (In_Peak - Last_Release_Time) > Allowed_Delay
       then
-         if abs (In_Period - My_Period) < Allowed_Delay then -- same period => new one adjust (first detect first adjust)
+
+         if abs (In_Period - My_Period) < Allowed_Delay then -- same period
 
             Next_Release_Time := In_Peak + In_Period;
 
             Changing := True;
 
-         elsif My_Period > In_Period then -- different period => long one adjust
+         else -- different period
 
             Next_Release_Time := In_Peak + In_Period;
             My_Period := In_Period;
@@ -161,13 +163,13 @@ package body Generator_Controllers is
 
       My_Port      : constant Com_Ports   := Com_Ports (2);
 
-      My_Period    :          Time_Span   := Milliseconds (50) + Microseconds (100);
+      My_Period    :          Time_Span   := Milliseconds (50) + Microseconds (150);
       Release_Time :          Time        := System_Ready;
 
       Changing     :          Boolean     := False;
 
    begin
-      delay until System_Ready;
+      delay until System_Ready + Milliseconds (10);
 
       loop
          declare
