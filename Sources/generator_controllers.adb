@@ -75,7 +75,9 @@ package body Generator_Controllers is
    Receiver_3 : Receiver (3);
    Receiver_4 : Receiver (4);
 
-   procedure Adjust_Phase (My_Port : Com_Ports; Next_Release_Time : in out Time; My_Period : in out Time_Span; Changing : out Boolean)
+   type Changing_Status is mod 4;
+
+   procedure Adjust_Phase (My_Port : Com_Ports; Next_Release_Time : in out Time; My_Period : in out Time_Span; Changing : out Changing_Status)
      with inline is
 
       In_Signal         : constant Signal_Record  := Incoming_Signal_Register (My_Port).Get_Incoming_Signal_Info;
@@ -91,7 +93,7 @@ package body Generator_Controllers is
       Last_Release_Time : constant Time           := Next_Release_Time - 2 * My_Period;
    begin
 
-      Changing := False;
+      Changing := 0;
 
       -- check only if incoming signal stable & phase shift detected
       if (for all t of Time_Stamps => t /= System_Ready) and then -- enough incoming signal
@@ -104,14 +106,14 @@ package body Generator_Controllers is
 
             Next_Release_Time := In_Peak + In_Period;
 
-            Changing := True;
+            Changing := 1;
 
          else -- different period
 
             Next_Release_Time := In_Peak + In_Period;
             My_Period := In_Period;
 
-            Changing := True;
+            Changing := 1;
 
          end if;
       end if;
@@ -129,7 +131,7 @@ package body Generator_Controllers is
       My_Period    :          Time_Span   := Milliseconds (50);
       Release_Time :          Time        := System_Ready;
 
-      Changing     :          Boolean     := False;
+      Changing     :          Changing_Status     := 0;
 
    begin
       delay until System_Ready;
@@ -143,8 +145,10 @@ package body Generator_Controllers is
 
          -- Adjust Release_Time
          Release_Time := Release_Time + My_Period;
-         if not Changing then
+         if Changing = 0 then
             Adjust_Phase (My_Port, Release_Time, My_Period, Changing);
+         else
+            Changing := Changing + 1;
          end if;
 
          -- delay till next period
@@ -166,7 +170,7 @@ package body Generator_Controllers is
       My_Period    :          Time_Span   := Milliseconds (50) + Microseconds (150);
       Release_Time :          Time        := System_Ready;
 
-      Changing     :          Boolean     := False;
+      Changing     :          Changing_Status     := 0;
 
    begin
       delay until System_Ready + Milliseconds (10);
@@ -185,8 +189,10 @@ package body Generator_Controllers is
 
                -- Adjust Release_Time
                Release_Time := Release_Time + My_Period;
-               if not Changing then
+               if Changing = 0 then
                   Adjust_Phase (My_Port, Release_Time, My_Period, Changing);
+               else
+                  Changing := Changing + 1;
                end if;
 
                -- delay till next period
