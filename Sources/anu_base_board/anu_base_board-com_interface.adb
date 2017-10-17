@@ -12,7 +12,9 @@ with STM32F4.Reset_and_clock_control.Ops;         use STM32F4.Reset_and_clock_co
 with STM32F4.System_configuration_controller.Ops; use STM32F4.System_configuration_controller.Ops;
 with STM32F4.Interrupts_and_Events;               use STM32F4.Interrupts_and_Events;
 with STM32F4.Interrupts_and_Events.Ops;           use STM32F4.Interrupts_and_Events.Ops;
-with STM32F4.Random_number_generator.Ops;         use STM32F4.Random_number_generator.Ops;
+with STM32F4.DMA_controller;                      use STM32F4.DMA_controller;
+with STM32F4.Timers;                              use STM32F4.Timers;
+-- with STM32F4.Timers.Ops;                          use STM32F4.Timers.Ops;
 
 package body ANU_Base_Board.Com_Interface is
 
@@ -77,6 +79,37 @@ package body ANU_Base_Board.Com_Interface is
 
    end Port_Inspector;
 
+--     TIM6_Semaphore : Ada.Synchronous_Task_Control.Suspension_Object;
+--
+--     protected body TIM6_Interrupt is
+--
+--        procedure Enable_TIM6 is
+--        begin
+--
+--           STM32F4.Reset_and_clock_control.Ops.Enable (Timer_No (6));
+--           STM32F4.Timers.Ops.Enable (Timer_No (6));
+--           STM32F4.Timers.Ops.Enable (Timer_No (6), Update);
+--
+--           STM32F4.Timers.Ops.Set_Prescaler (6, 10000);
+--           STM32F4.Timers.Ops.Set_Auto_Reload_16 (6, 20_000); -- interrupt period : 20 milliseconds
+--        end Enable_TIM6;
+--
+--        procedure TIM6_Interrupt_Handler is
+--        begin
+--           Set_True (TIM6_Semaphore);
+--        end TIM6_Interrupt_Handler;
+--
+--     end TIM6_Interrupt;
+--
+--     task TIM6_Slave;
+--     task body TIM6_Slave is
+--     begin
+--        loop
+--           Toggle (Green);
+--           Suspend_Until_True (TIM6_Semaphore);
+--        end loop;
+--     end TIM6_Slave;
+
 begin
    for Port in Com_Ports loop
       for Dir in Com_Directions loop
@@ -93,8 +126,32 @@ begin
       Set                   (Com_Wires (Port, Tx, Data));
    end loop;
 
-   Enable (STM32F4.Reset_and_clock_control.Ops.Random_number_generator);
-   Random_Enable;
+--     Enable (DMA1);
+--     -- request from TIM6_UP
+--     Configure (DMA                         => 1;
+--                Stream                      => 1;
+--                Stream_Enable               => STM32F4.Enable;
+--  --                Direct_mode_error_interrupt : Enabler        := Disable;
+--  --                Transfer_error_interrupt    : Enabler        := Disable;
+--  --                Half_transfer_interrupt     : Enabler        := Disable;
+--  --                Transfer_complete_interrupt : Enabler        := Disable;
+--                Peripheral_flow_controller  => PFCTRL_Options := DMA_Flowcontrol;
+--                Data_transfer_direction     => Memory_to_Peripheral;
+--                Circular_mode               => STM32F4.Enable;
+--  --                Peripheral_increment_mode   : INC_Options    := Address_Fixed;
+--                Memory_increment_mode       => Address_Fixed;
+--                Peripheral_data_size        => Byte_Size;
+--                Memory_data_size            => Byte_Size;
+--  --                Peripheral_increment_offset : PINCOS_Options := Linked_to_PSIZE;
+--  --                Priority_levely_level       : PL_Options     := Low;
+--  --                Double_buffer_modee_buffer_mode : Enabler    := Disable;
+--  --                Peripheral_burst            : BURST_Options  := Single;
+--  --                Memory_burst                : BURST_Options  := Single;
+--                Channel                     : => 7);
+
+   -- enable TIM6
+
+   -- TIM6_Interrupt.Enable_TIM6;
 
    Port_Inspector.Initialize_Interrupt;
 exception

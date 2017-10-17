@@ -34,4 +34,17 @@ package ANU_Base_Board.Com_Interface is
 
    end Port_Inspector;
 
+--     -- TIM6 Interrupt Handler
+--     protected TIM6_Interrupt with Interrupt_Priority => Interrupt_Priority'Last is
+--
+--        procedure Enable_TIM6;
+--
+--     private
+--
+--        procedure TIM6_Interrupt_Handler;
+--        pragma Attach_Handler (TIM6_Interrupt_Handler, TIM6_DAC_Interrupt);
+--        pragma Unreferenced (TIM6_Interrupt_Handler);
+--
+--     end TIM6_Interrupt;
+
 end ANU_Base_Board.Com_Interface;
