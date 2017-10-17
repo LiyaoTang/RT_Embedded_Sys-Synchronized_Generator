@@ -67,8 +67,6 @@ package body Generator_Controllers is
          Suspend_Until_True (New_Arrival (My_Port));
          Incoming_Signal_Register (My_Port).Record_Time (Clock); -- register the time
 
-         -- Port LEDs (R => Incoming)
-         Toggle ((My_Port, R));
       end loop;
 
    exception
@@ -153,13 +151,13 @@ package body Generator_Controllers is
 
       -- check only if incoming signal stable & phase shift detected
       if (for all t of Time_Stamps => t /= System_Ready) and then -- enough incoming signal
-        abs (In_Remote_Period - In_Recent_Period) < Microseconds (10) and then -- stable incomingming Signal_Record
-        abs (In_Peak - Cur_Release_Time)  > Microseconds (1) and then -- detected phase shift
-        abs (In_Peak - Last_Release_Time) > Microseconds (1)
+        abs (In_Remote_Period - In_Recent_Period) < Microseconds (5) and then -- stable incomingming Signal_Record
+        abs (In_Peak - Cur_Release_Time)  > Microseconds (5) and then -- detected phase shift
+        abs (In_Peak - Last_Release_Time) > Microseconds (5)
       then
          Toggle ((My_Port, L));
 
-         if abs (My_Period - In_Period) < Microseconds (1) then -- same period
+         if abs (My_Period - In_Period) < Microseconds (5) then -- same period
 
             Next_Release_Time := In_Peak + In_Period;
 
@@ -179,6 +177,8 @@ package body Generator_Controllers is
             Toggle (((My_Port + 2), R));
 
          end if;
+
+         Toggle (My_Port);
 
       end if;
 
@@ -217,7 +217,7 @@ package body Generator_Controllers is
             Adjust_Phase (My_Port, Release_Time, My_Period, Changing);
 
             -- Inform the generator
-            if Changing = 1 then
+            if Changing = 0 then
                Wave_Records (Record_Num).Set_My_Phase (Release_Time, My_Period);
             end if;
          else
