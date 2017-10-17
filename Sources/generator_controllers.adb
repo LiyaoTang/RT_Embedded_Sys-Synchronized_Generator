@@ -22,8 +22,6 @@ package body Generator_Controllers is
    System_Start   : constant Time      := Clock;
    System_Ready   : constant Time      := System_Start + Milliseconds (30);
 
-   Allowed_Delay  : constant Time_Span := Nanoseconds (1000);
-
    ----------------------------------------------------------------------------------------------------------
    -- Recording Incoming Signal => write: Receiver; Read: Sender
    ----------------------------------------------------------------------------------------------------------
@@ -79,8 +77,6 @@ package body Generator_Controllers is
 
    Receiver_1 : Receiver (1);
    Receiver_2 : Receiver (2);
-   Receiver_3 : Receiver (3);
-   Receiver_4 : Receiver (4);
 
    ----------------------------------------------------------------------------------------------------------
    -- Recording Generated Wave => Write: Generator, Sender; Read: Sender, Generator
@@ -88,8 +84,8 @@ package body Generator_Controllers is
 
    protected type Wave_Record with Interrupt_Priority => Interrupt_Priority'Last is
 
-      procedure Set_My_Phase (Next_Start_Time : Time; My_Period : Time_Span);
-      procedure Get_My_Phase (Next_Start_Time : in out Time; Suggested_Period : out Time_Span);
+      procedure Set_My_Phase (Next_Start_Time : Time; Suggested_Period : Time_Span);
+      procedure Get_My_Phase (Last_release_Time : in out Time; Cur_Period : in out Time_Span; New_Update : out Boolean);
 
    private
 
@@ -101,18 +97,26 @@ package body Generator_Controllers is
 
    protected body Wave_Record is
 
-      procedure Set_My_Phase (Next_Start_Time : Time; My_Period : Time_Span) is
+      procedure Set_My_Phase (Next_Start_Time : Time; Suggested_Period : Time_Span) is
       begin
          Start_Time := Next_Start_Time;
-         Period     := My_Period;
+         Period     := Suggested_Period;
          Has_Update := True;
       end Set_My_Phase;
 
-      procedure Get_My_Phase (Next_Start_Time : in out Time; Suggested_Period : out Time_Span) is
+      procedure Get_My_Phase (Last_release_Time : in out Time; Cur_Period : in out Time_Span; New_Update : out Boolean) is
       begin
+         New_Update := Has_Update;
+
          if Has_Update then
-            Next_Start_Time  := Start_Time;
-            Suggested_Period := Period;
+
+            -- make sure sync time is valid
+            while Start_Time < Last_release_Time + Cur_Period loop
+               Start_Time := Start_Time + Period;
+            end loop;
+
+            Last_release_Time  := Start_Time;
+            Cur_Period := Period;
             Has_Update := False;
          end if;
       end Get_My_Phase;
@@ -149,16 +153,21 @@ package body Generator_Controllers is
 
       -- check only if incoming signal stable & phase shift detected
       if (for all t of Time_Stamps => t /= System_Ready) and then -- enough incoming signal
-        abs (In_Recent_Period - In_Remote_Period) < Allowed_Delay and then -- stable incoming signal
-        abs (In_Peak - Cur_Release_Time) > Allowed_Delay and then -- detected phase shift
-        abs (In_Peak - Last_Release_Time) > Allowed_Delay
+        abs (In_Remote_Period - In_Recent_Period) < Microseconds (10) and then -- stable incomingming Signal_Record
+        abs (In_Peak - Cur_Release_Time)  > Microseconds (1) and then -- detected phase shift
+        abs (In_Peak - Last_Release_Time) > Microseconds (1)
       then
+         Toggle ((My_Port, L));
 
-         if abs (In_Period - My_Period) < Allowed_Delay then -- same period
+         if abs (My_Period - In_Period) < Microseconds (1) then -- same period
 
             Next_Release_Time := In_Peak + In_Period;
 
+            My_Period := In_Period;
+
             Changing := 1;
+
+            Toggle (((My_Port + 2), L));
 
          else  -- different period
 
@@ -167,11 +176,10 @@ package body Generator_Controllers is
 
             Changing := 1;
 
+            Toggle (((My_Port + 2), R));
+
          end if;
 
-         if Changing = 1 then
-            Toggle (Green);
-         end if;
       end if;
 
    end Adjust_Phase;
@@ -189,12 +197,19 @@ package body Generator_Controllers is
    begin
       -- Get initial period
       Suspend_Until_True (Generator_Ready (Record_Num));
-      Wave_Records (Record_Num).Get_My_Phase (Release_Time, My_Period);
+      declare
+         New_Update : Boolean := False;
+      begin
+         Wave_Records (Record_Num).Get_My_Phase (Release_Time, My_Period, New_Update);
+      end;
+
       delay until System_Ready;
 
       loop
          -- output data
          Toggle (My_Port);
+         Toggle (Green);
+         Toggle (Blue);
 
          -- Adjust Release_Time
          Release_Time := Release_Time + My_Period;
@@ -247,14 +262,14 @@ package body Generator_Controllers is
       Wave_y       : Float     := 0.0;
       pragma Unreferenced (Wave_y);
 
+      New_Update   : Boolean   := False;
+
    begin
       Wave_Records (Record_Num).Set_My_Phase (System_Ready, Period);
       Set_True (Generator_Ready (Record_Num));
       delay until System_Ready;
 
       loop
-         Release_Time := Release_Time + Period / Sample_Rate;
-
          -- Calculate & Update wave val
          Wave_y := Sine (Wave_x);
          Wave_x := Wave_x + Step_x;
@@ -267,7 +282,14 @@ package body Generator_Controllers is
             Wave_x := 0.0;
 
             -- Adjust
-            Wave_Records (Record_Num).Get_My_Phase (Release_Time, Period);
+            Wave_Records (Record_Num).Get_My_Phase (Release_Time, Period, New_Update);
+
+            if not New_Update then
+               Release_Time := Release_Time + Period / Sample_Rate;
+            end if;
+
+         else
+            Release_Time := Release_Time + Period / Sample_Rate;
          end if;
 
          delay until Release_Time;
@@ -276,7 +298,6 @@ package body Generator_Controllers is
             Toggle (Red);
             Toggle (Orange);
          end if;
-
       end loop;
    end Generator;
 

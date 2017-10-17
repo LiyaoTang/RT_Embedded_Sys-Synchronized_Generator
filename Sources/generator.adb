@@ -30,7 +30,9 @@ begin
    delay until System_Startup + Reset_Flicker;
    DBL.All_Off;
    ABBL.All_Off;
+
    Toggle (Red);
+   Toggle (Green);
 
    loop
       null; -- Main task (at lowest priority) needs to be prevented from exiting
