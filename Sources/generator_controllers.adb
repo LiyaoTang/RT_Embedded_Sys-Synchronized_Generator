@@ -160,8 +160,6 @@ package body Generator_Controllers is
 
             Next_Release_Time := In_Peak + In_Period;
 
-            My_Period := In_Period;
-
             Changing := 1;
 
             Toggle (((My_Port + 2), L));
