@@ -155,7 +155,6 @@ package body Generator_Controllers is
         abs (In_Peak - Cur_Release_Time)  > Microseconds (5) and then -- detected phase shift
         abs (In_Peak - Last_Release_Time) > Microseconds (5)
       then
-         Toggle ((My_Port, L));
 
          if abs (My_Period - In_Period) < Microseconds (5) then -- same period
 
@@ -206,11 +205,6 @@ package body Generator_Controllers is
       delay until System_Ready;
 
       loop
-         -- output data
-         Toggle (My_Port);
-         Toggle (Green);
-         Toggle (Blue);
-
          -- Adjust Release_Time
          Release_Time := Release_Time + My_Period;
          if Changing = 0 then
@@ -223,6 +217,11 @@ package body Generator_Controllers is
          else
             Changing := Changing + 1;
          end if;
+
+         -- output data
+         Toggle (My_Port);
+         Toggle (Green);
+         Toggle (Blue);
 
          -- delay till next period
          delay until Release_Time;
@@ -302,6 +301,6 @@ package body Generator_Controllers is
    end Generator;
 
    Generator_1 : Generator (1, 0);
-   Generator_2 : Generator (2, 1000);
+   Generator_2 : Generator (2, 100);
 
 end Generator_Controllers;
