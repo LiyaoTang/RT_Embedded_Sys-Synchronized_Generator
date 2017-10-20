@@ -10,7 +10,7 @@ In this assignment, two possible designs of protocol for synchronization are imp
 
 The incoming signal to be mentioned below is a square wave, whose rising and falling edge denote the start of a sine wave cycle. In such encoding, the two different square waves shown in the graph below represent the same sine wave.
 
-![Sine_Encoding](.\Design Graph\Sine_Encoding.PNG) 
+![Sine_Encoding](.\Design_Graph\Sine_Encoding.PNG) 
 
 ##### Master-Slave Model
 
@@ -34,7 +34,7 @@ To synchronize with incoming signal, the board performs two-step synchronization
 
 When boards form a network, boards need to define a preference over incoming signals. For example, the board can prefer lower frequency to higher frequency so that the network will eventually synchronize with the board with lowest frequency.
 
-Each board consists of three modules, which are generator, receiver and sender and are separated into corresponding tasks. A graph is provided below to demonstrate their relation.![Deteect-React](.\Design Graph\Detect-React.svg) 
+Each board consists of three modules, which are generator, receiver and sender and are separated into corresponding tasks. A graph is provided below to demonstrate their relation.![Deteect-React](.\Design_Graph\Detect-React.svg) 
 
 Because of the delay between the actual time when signals arrive and the time recorded locally, a certain drift between calculated incoming sine wave and local sine wave is allowed, which is 5 microseconds in the current design, with two generators on the same board. The delay is inevitable without further hardware support because the time need to be recorded in a protected object but touching protected object inside an interrupt handler will result in a frozen system. The allowed drifting time span is the maximal time for boards to handle interrupts for each incoming signal, context switch to the receiver, and record the time into the protected object.
 
@@ -46,11 +46,11 @@ To implement duty cycle, I refer to Pulse Width Modulation (PWM), which inspires
 
 To achieve this, it is important to synchronize on the rising edge of the square wave, which requires a different encoding of sine wave. The graph below shows an example encoding where two synchronized sine waves carries different data along.
 
-![Duty_Cycle_Sine_Encoding](.\Design Graph\Duty_Cycle_Sine_Encoding.PNG) 
+![Duty_Cycle_Sine_Encoding](.\Design_Graph\Duty_Cycle_Sine_Encoding.PNG) 
 
 Now the relation between tasks can be shown as the graph below.
 
-![Duty Cycle](.\Design Graph\Duty Cycle.svg) 
+![Duty Cycle](.\Design_Graph\Duty Cycle.svg) 
 
 Compared to the design in previous graph, the logic to synchronize the base wave, sine wave in our case, is similar. But the fact limits the ability of sending data that it is inevitable to have a falling edge between two rising edge, which requires the protocol to define a certain behaviour pattern in synchronizing such that board can agree on an invalid number so that the board will not mistake those signals generated from synchronizing process as incoming data. This limitation is also caused by the design because the decoupling between receiver and sender makes receiver not able to recognize if signal is from unsynchronized port as receiver does not know its local frequency.
 
