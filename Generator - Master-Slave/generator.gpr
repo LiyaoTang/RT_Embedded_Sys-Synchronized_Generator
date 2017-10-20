@@ -1,0 +1,70 @@
+project Generator is
+
+   for Languages use ("Ada");
+   type Build_Modes is
+      ("debug", "release");
+   Build_Mode : Build_Modes := external ("LEDs_Build_Mode", "debug");
+   for Runtime ("ada") use "ravenscar-sfp-stm32f4";
+   for Target use "arm-eabi";
+
+   case Build_Mode is
+
+      when "debug" =>
+         for Main use ("generator.adb");
+         for Object_Dir use "Objects/";
+         for Source_Dirs use ("Sources", "Sources/stm32f4", "Sources/discovery_board", "Sources/anu_base_board", "Sources/utilities");
+         for Exec_Dir use "Executables/";
+
+      when "release" =>
+         for Main use ("generator.adb");
+         for Object_Dir use "Objects/";
+         for Source_Dirs use ("Sources", "Sources/stm32f4", "Sources/discovery_board", "Sources/anu_base_board");
+         for Exec_Dir use "Executables/";
+   end case;
+
+   package Compiler is
+
+      case Build_Mode is
+
+         when "debug" =>
+            for Default_Switches ("ada") use ("-gnatVncdefimopst", "-gnatw.e.Y.X", "-gnatQ", "-gnat12", "-gnatyaAbBcCefhiIklnOprStux", "-gnata", "-gnato", "-O2", "-gnatn", "-g");
+
+         when "release" =>
+            for Default_Switches ("ada") use ("-O2", "-gnatQ", "-gnatw.X");
+      end case;
+   end Compiler;
+
+   package Builder is
+
+      case Build_Mode is
+
+         when "debug" =>
+            for Default_Switches ("ada") use ("-g", "-s", "-C");
+            for Global_Configuration_Pragmas use "gnat.adc";
+
+         when "release" =>
+            for Default_Switches ("ada") use ();
+            for Global_Configuration_Pragmas use "gnat.adc";
+      end case;
+   end Builder;
+
+   package Ide is
+      for Program_Host use "localhost:4242";
+      for Communication_Protocol use "remote";
+
+      case Build_Mode is
+
+         when "debug" =>
+            for Documentation_Dir use "Documentation/";
+            for Connection_Tool use "st-util";
+
+         when "release" =>
+            for Documentation_Dir use "Documentation/";
+            for Gnat use "arm-eabi-gnat";
+            for Gnatlist use "arm-eabi-gnatls";
+            for Debugger_Command use "arm-eabi-gdb";
+      end case;
+   end Ide;
+
+end Generator;
+
